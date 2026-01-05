@@ -1,13 +1,18 @@
-"""Centralized environment variable loading for the trading agent configuration."""
+"""
+Centralized environment variable loading for the trading agent configuration.
+GANN ONLY EDITION - All TAAPI dependencies removed.
+"""
 
 import json
 import os
 from dotenv import load_dotenv
+from typing import Optional, List, Dict, Union, Any
 
+# Cargar variables de entorno desde el archivo .env
 load_dotenv()
 
 
-def _get_env(name: str, default: str | None = None, required: bool = False) -> str | None:
+def _get_env(name: str, default: Optional[str] = None, required: bool = False) -> Optional[str]:
     """Fetch an environment variable with optional default and required validation."""
     value = os.getenv(name, default)
     if required and (value is None or value == ""):
@@ -16,23 +21,15 @@ def _get_env(name: str, default: str | None = None, required: bool = False) -> s
 
 
 def _get_bool(name: str, default: bool = False) -> bool:
+    """Parse boolean environment variables."""
     raw = os.getenv(name)
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _get_int(name: str, default: int | None = None) -> int | None:
-    raw = os.getenv(name)
-    if raw is None or raw.strip() == "":
-        return default
-    try:
-        return int(raw)
-    except ValueError as exc:
-        raise RuntimeError(f"Invalid integer for {name}: {raw}") from exc
-
-
-def _get_json(name: str, default: dict | None = None) -> dict | None:
+def _get_json(name: str, default: Optional[dict] = None) -> Optional[dict]:
+    """Parse JSON objects from environment variables."""
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
         return default
@@ -45,54 +42,55 @@ def _get_json(name: str, default: dict | None = None) -> dict | None:
         raise RuntimeError(f"Invalid JSON for {name}: {raw}") from exc
 
 
-def _get_list(name: str, default: list[str] | None = None) -> list[str] | None:
+def _get_list(name: str, default: Optional[List[str]] = None) -> Optional[List[str]]:
+    """Robust list parser that handles commas, spaces, and JSON arrays."""
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
         return default
+    
     raw = raw.strip()
-    # Support JSON-style lists
+    
+    # 1. Try JSON list format ["BTC", "ETH"]
     if raw.startswith("[") and raw.endswith("]"):
         try:
             parsed = json.loads(raw)
-            if not isinstance(parsed, list):
-                raise RuntimeError(f"Environment variable {name} must be a list if using JSON syntax")
-            return [str(item).strip().strip('"\'') for item in parsed if str(item).strip()]
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(f"Invalid JSON list for {name}: {raw}") from exc
-    # Fallback: comma separated string
-    values = []
-    for item in raw.split(","):
-        cleaned = item.strip().strip('"\'')
-        if cleaned:
-            values.append(cleaned)
-    return values or default
+            if isinstance(parsed, list):
+                return [str(item).strip().strip('"\'') for item in parsed if str(item).strip()]
+        except json.JSONDecodeError:
+            pass 
+            
+    # 2. Try Comma Separation (BTC,ETH,SOL)
+    if "," in raw:
+        return [item.strip() for item in raw.split(",") if item.strip()]
+        
+    # 3. Try Space Separation (BTC ETH SOL)
+    return raw.split()
 
 
+# --- DICCIONARIO DE CONFIGURACIÓN GLOBAL ---
 CONFIG = {
-    # API keys - not required during module import (checked when bot starts)
-    "taapi_api_key": _get_env("TAAPI_API_KEY"),
-    "hyperliquid_private_key": _get_env("HYPERLIQUID_PRIVATE_KEY") or _get_env("LIGHTER_PRIVATE_KEY"),
-    "mnemonic": _get_env("MNEMONIC"),
-    # Hyperliquid network/base URL overrides
-    "hyperliquid_base_url": _get_env("HYPERLIQUID_BASE_URL"),
+    # HYPERLIQUID CONFIGURATION
+    "hyperliquid_private_key": _get_env("HYPERLIQUID_PRIVATE_KEY"),
+    "hyperliquid_account_address": _get_env("HYPERLIQUID_ACCOUNT_ADDRESS") or _get_env("HL_ACCOUNT_ADDRESS"),
     "hyperliquid_network": _get_env("HYPERLIQUID_NETWORK", "mainnet"),
-    # LLM via OpenRouter
+    "hyperliquid_base_url": _get_env("HYPERLIQUID_BASE_URL"),
+    
+    # AI / LLM (Gemini 2.0 via OpenRouter/Google Base URL)
     "openrouter_api_key": _get_env("OPENROUTER_API_KEY"),
     "openrouter_base_url": _get_env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-    "openrouter_referer": _get_env("OPENROUTER_REFERER"),
-    "openrouter_app_title": _get_env("OPENROUTER_APP_TITLE", "trading-agent"),
-    "llm_model": _get_env("LLM_MODEL", "x-ai/grok-4"),
+    "openrouter_app_title": _get_env("OPENROUTER_APP_TITLE", "trading-agent-gann"),
+    "llm_model": _get_env("LLM_MODEL", "gemini-2.0-flash-exp"),
+    
     # Reasoning tokens
     "reasoning_enabled": _get_bool("REASONING_ENABLED", False),
     "reasoning_effort": _get_env("REASONING_EFFORT", "high"),
-    # Provider routing
-    "provider_config": _get_json("PROVIDER_CONFIG"),
-    "provider_quantizations": _get_list("PROVIDER_QUANTIZATIONS"),
-    # Runtime controls via env
-    "assets": _get_env("ASSETS"),  # e.g., "BTC ETH SOL" or "BTC,ETH,SOL"
-    "interval": _get_env("INTERVAL"),  # e.g., "5m", "1h"
-    "trading_mode": _get_env("TRADING_MODE", "auto"),  # manual or auto
-    # API server
+    
+    # Runtime controls
+    "assets": _get_list("ASSETS") or ["BTC", "ETH", "SOL"],
+    "interval": _get_env("INTERVAL", "5m"),
+    "trading_mode": _get_env("TRADING_MODE", "auto"),
+    
+    # API server settings
     "api_host": _get_env("API_HOST", "0.0.0.0"),
     "api_port": _get_env("APP_PORT") or _get_env("API_PORT") or "3000",
 }

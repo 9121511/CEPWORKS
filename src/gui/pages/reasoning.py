@@ -40,7 +40,7 @@ def create_reasoning(bot_service: BotService, state_manager: StateManager):
                     json_str = json.dumps(reasoning_data, indent=2)
 
                     # Create download link
-                    ui.download(json_str, filename)
+                    ui.download(json_str.encode('utf-8'), filename)
                     ui.notify(f'Exporting {filename}...', type='info')
 
                 ui.button('⬇️ Export JSON', on_click=export_json).props('size=sm')
@@ -171,7 +171,13 @@ def create_reasoning(bot_service: BotService, state_manager: StateManager):
                                         ui.label(f'Allocation: ${allocation:,.2f}')
                                         ui.label(f'TP: {tp_price if tp_price else "N/A"}')
                                         ui.label(f'SL: {sl_price if sl_price else "N/A"}')
-                                        ui.label(f'Exit Plan: {exit_plan[:50]}...' if len(str(exit_plan)) > 50 else f'Exit Plan: {exit_plan}', column_span=2)
+                                        
+                                        # --- FIX IS HERE ---
+                                        # Removed column_span argument, added .classes('col-span-2')
+                                        exit_text = f'Exit Plan: {exit_plan[:50]}...' if len(str(exit_plan)) > 50 else f'Exit Plan: {exit_plan}'
+                                        ui.label(exit_text).classes('col-span-2 text-gray-500 italic')
+                                        # -------------------
+
                     else:
                         ui.label(f'No {action_filter.value} decisions in current batch').classes('text-gray-400 text-center py-4')
                 else:

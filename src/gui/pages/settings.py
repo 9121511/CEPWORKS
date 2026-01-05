@@ -35,7 +35,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
             'strategy': {
                 'assets': CONFIG.get('assets') or 'BTC ETH',
                 'interval': CONFIG.get('interval') or '5m',
-                'llm_model': CONFIG.get('llm_model') or 'x-ai/grok-4',
+                'llm_model': CONFIG.get('llm_model') or 'gemini-2.0-flash',
                 'reasoning_enabled': CONFIG.get('reasoning_enabled', False),
                 'reasoning_effort': CONFIG.get('reasoning_effort') or 'high'
             },
@@ -73,6 +73,10 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
 
     # Load initial configuration
     config_data = load_config()
+    
+    # Helper to safely get nested keys
+    def safe_get(section, key, default):
+        return config_data.get(section, {}).get(key, default)
 
     # ===== TABBED INTERFACE =====
     with ui.card().classes('w-full p-4'):
@@ -93,7 +97,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     assets_input = ui.textarea(
                         label='Assets (comma-separated)',
                         placeholder='BTC, ETH, SOL',
-                        value=config_data['strategy']['assets']
+                        value=safe_get('strategy', 'assets', 'BTC ETH')
                     ).classes('w-full')
                     ui.label('Example: BTC, ETH, SOL or BTC ETH SOL').classes('text-xs text-gray-400')
 
@@ -104,7 +108,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     interval_select = ui.select(
                         label='Interval',
                         options=['1m', '5m', '15m', '1h', '4h'],
-                        value=config_data['strategy']['interval']
+                        value=safe_get('strategy', 'interval', '5m')
                     ).classes('w-full')
                     ui.label('Timeframe for trading decisions').classes('text-xs text-gray-400')
 
@@ -118,9 +122,10 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                             'x-ai/grok-4',
                             'openai/gpt-4',
                             'anthropic/claude-3.5-sonnet',
-                            'deepseek/deepseek-chat-v3.1'
+                            'deepseek/deepseek-chat-v3.1',
+                            'gemini-2.0-flash' 
                         ],
-                        value=config_data['strategy']['llm_model']
+                        value=safe_get('strategy', 'llm_model', 'gemini-2.0-flash')
                     ).classes('w-full')
                     ui.label('LLM model for trading decisions').classes('text-xs text-gray-400')
 
@@ -130,14 +135,14 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     with ui.row().classes('items-center gap-4'):
                         reasoning_enabled = ui.checkbox(
                             'Enable Reasoning Tokens',
-                            value=config_data['strategy']['reasoning_enabled']
+                            value=safe_get('strategy', 'reasoning_enabled', False)
                         )
                         ui.label('Use extended reasoning for better decisions').classes('text-sm text-gray-400')
 
                     reasoning_effort = ui.select(
                         label='Reasoning Effort',
                         options=['low', 'medium', 'high'],
-                        value=config_data['strategy']['reasoning_effort']
+                        value=safe_get('strategy', 'reasoning_effort', 'high')
                     ).classes('w-full')
 
                     ui.separator()
@@ -145,6 +150,9 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     # Save and Load buttons
                     async def save_strategy_config():
                         try:
+                            # Ensure structure exists
+                            if 'strategy' not in config_data: config_data['strategy'] = {}
+                            
                             # Update config data
                             config_data['strategy']['assets'] = assets_input.value
                             config_data['strategy']['interval'] = interval_select.value
@@ -155,8 +163,10 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                             # Save to file
                             if save_config(config_data):
                                 # Update bot service config
-                                assets_list = [a.strip() for a in config_data['strategy']['assets'].replace(',', ' ').split() if a.strip()]
-                                bot_service.update_config({
+                                raw_assets = config_data['strategy'].get('assets', '') or ''
+                                assets_list = [a.strip() for a in raw_assets.replace(',', ' ').split() if a.strip()]
+                                
+                                await bot_service.update_config({
                                     'assets': assets_list,
                                     'interval': config_data['strategy']['interval'],
                                     'model': config_data['strategy']['llm_model']
@@ -170,11 +180,13 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     async def load_strategy_config():
                         try:
                             loaded_config = load_config()
-                            assets_input.value = loaded_config['strategy']['assets']
-                            interval_select.value = loaded_config['strategy']['interval']
-                            llm_model_select.value = loaded_config['strategy']['llm_model']
-                            reasoning_enabled.value = loaded_config['strategy']['reasoning_enabled']
-                            reasoning_effort.value = loaded_config['strategy']['reasoning_effort']
+                            # Use safe access for all fields
+                            strat = loaded_config.get('strategy', {})
+                            assets_input.value = strat.get('assets', '')
+                            interval_select.value = strat.get('interval', '5m')
+                            llm_model_select.value = strat.get('llm_model', 'gemini-2.0-flash')
+                            reasoning_enabled.value = strat.get('reasoning_enabled', False)
+                            reasoning_effort.value = strat.get('reasoning_effort', 'high')
                             ui.notify('Configuration loaded successfully!', type='positive')
                         except Exception as e:
                             ui.notify(f'Error loading config: {str(e)}', type='negative')
@@ -202,7 +214,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     taapi_input = ui.input(
                         label='TAAPI API Key',
                         placeholder='eyJhbGciOiJI...',
-                        value=config_data['api_keys']['taapi_api_key'],
+                        value=safe_get('api_keys', 'taapi_api_key', ''),
                         password=True,
                         password_toggle_button=True
                     ).classes('w-full')
@@ -215,7 +227,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     hyperliquid_input = ui.input(
                         label='Private Key',
                         placeholder='0x...',
-                        value=config_data['api_keys']['hyperliquid_private_key'],
+                        value=safe_get('api_keys', 'hyperliquid_private_key', ''),
                         password=True,
                         password_toggle_button=True
                     ).classes('w-full')
@@ -225,7 +237,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     hyperliquid_network = ui.select(
                         label='Network',
                         options=['mainnet', 'testnet'],
-                        value=config_data['api_keys']['hyperliquid_network']
+                        value=safe_get('api_keys', 'hyperliquid_network', 'mainnet')
                     ).classes('w-full')
 
                     ui.separator()
@@ -235,7 +247,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     openrouter_input = ui.input(
                         label='OpenRouter API Key',
                         placeholder='sk-or-v1-...',
-                        value=config_data['api_keys']['openrouter_api_key'],
+                        value=safe_get('api_keys', 'openrouter_api_key', ''),
                         password=True,
                         password_toggle_button=True
                     ).classes('w-full')
@@ -282,6 +294,8 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     async def save_api_keys():
                         """Save API keys to configuration"""
                         try:
+                            if 'api_keys' not in config_data: config_data['api_keys'] = {}
+                            
                             # Update config data
                             config_data['api_keys']['taapi_api_key'] = taapi_input.value
                             config_data['api_keys']['hyperliquid_private_key'] = hyperliquid_input.value
@@ -327,10 +341,10 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                         max_position_slider = ui.slider(
                             min=100,
                             max=10000,
-                            value=config_data['risk_management']['max_position_size'],
+                            value=safe_get('risk_management', 'max_position_size', 1000),
                             step=100
                         ).classes('flex-grow')
-                        max_position_label = ui.label(f"${config_data['risk_management']['max_position_size']:,.0f}").classes('text-white font-bold min-w-[100px]')
+                        max_position_label = ui.label(f"${safe_get('risk_management', 'max_position_size', 1000):,.0f}").classes('text-white font-bold min-w-[100px]')
                         max_position_slider.on('update:model-value', lambda e: max_position_label.set_text(f'${e.args:,.0f}'))
                     ui.label('Maximum USD allocation per position').classes('text-xs text-gray-400')
 
@@ -342,10 +356,10 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                         max_leverage_slider = ui.slider(
                             min=1,
                             max=20,
-                            value=config_data['risk_management']['max_leverage'],
+                            value=safe_get('risk_management', 'max_leverage', 3),
                             step=0.5
                         ).classes('flex-grow')
-                        max_leverage_label = ui.label(f"{config_data['risk_management']['max_leverage']:.1f}x").classes('text-white font-bold min-w-[100px]')
+                        max_leverage_label = ui.label(f"{safe_get('risk_management', 'max_leverage', 3):.1f}x").classes('text-white font-bold min-w-[100px]')
                         max_leverage_slider.on('update:model-value', lambda e: max_leverage_label.set_text(f'{e.args:.1f}x'))
                     ui.label('Maximum leverage for perpetual futures (1x-20x)').classes('text-xs text-gray-400')
 
@@ -357,10 +371,10 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                         stop_loss_slider = ui.slider(
                             min=1,
                             max=20,
-                            value=config_data['risk_management']['stop_loss_pct'],
+                            value=safe_get('risk_management', 'stop_loss_pct', 5),
                             step=0.5
                         ).classes('flex-grow')
-                        stop_loss_label = ui.label(f"{config_data['risk_management']['stop_loss_pct']:.1f}%").classes('text-white font-bold min-w-[100px]')
+                        stop_loss_label = ui.label(f"{safe_get('risk_management', 'stop_loss_pct', 5):.1f}%").classes('text-white font-bold min-w-[100px]')
                         stop_loss_slider.on('update:model-value', lambda e: stop_loss_label.set_text(f'{e.args:.1f}%'))
                     ui.label('Default stop loss percentage from entry').classes('text-xs text-gray-400')
 
@@ -372,10 +386,10 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                         take_profit_slider = ui.slider(
                             min=2,
                             max=50,
-                            value=config_data['risk_management']['take_profit_pct'],
+                            value=safe_get('risk_management', 'take_profit_pct', 10),
                             step=1
                         ).classes('flex-grow')
-                        take_profit_label = ui.label(f"{config_data['risk_management']['take_profit_pct']:.0f}%").classes('text-white font-bold min-w-[100px]')
+                        take_profit_label = ui.label(f"{safe_get('risk_management', 'take_profit_pct', 10):.0f}%").classes('text-white font-bold min-w-[100px]')
                         take_profit_slider.on('update:model-value', lambda e: take_profit_label.set_text(f'{e.args:.0f}%'))
                     ui.label('Default take profit percentage from entry').classes('text-xs text-gray-400')
 
@@ -385,7 +399,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     ui.label('Maximum Open Positions').classes('text-lg font-semibold text-white')
                     max_positions_input = ui.number(
                         label='Max Positions',
-                        value=config_data['risk_management']['max_open_positions'],
+                        value=safe_get('risk_management', 'max_open_positions', 5),
                         min=1,
                         max=20
                     ).classes('w-full')
@@ -396,6 +410,8 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     # Save button
                     async def save_risk_config():
                         try:
+                            if 'risk_management' not in config_data: config_data['risk_management'] = {}
+                            
                             # Update config data
                             config_data['risk_management']['max_position_size'] = int(max_position_slider.value)
                             config_data['risk_management']['max_leverage'] = float(max_leverage_slider.value)
@@ -429,7 +445,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     ui.label('Desktop Notifications').classes('text-lg font-semibold text-white')
                     desktop_enabled_checkbox = ui.checkbox(
                         'Enable Desktop Notifications',
-                        value=config_data['notifications']['desktop_enabled']
+                        value=safe_get('notifications', 'desktop_enabled', True)
                     )
                     ui.label('Show system notifications for important events').classes('text-xs text-gray-400')
 
@@ -439,14 +455,14 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     ui.label('Telegram Notifications').classes('text-lg font-semibold text-white')
                     telegram_enabled_checkbox = ui.checkbox(
                         'Enable Telegram Notifications',
-                        value=config_data['notifications']['telegram_enabled']
+                        value=safe_get('notifications', 'telegram_enabled', False)
                     )
 
                     # Telegram token and chat ID (shown when enabled)
                     telegram_token_input = ui.input(
                         label='Telegram Bot Token',
                         placeholder='123456:ABC-DEF...',
-                        value=config_data['notifications']['telegram_token'],
+                        value=safe_get('notifications', 'telegram_token', ''),
                         password=True,
                         password_toggle_button=True
                     ).classes('w-full')
@@ -455,7 +471,7 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     telegram_chat_input = ui.input(
                         label='Telegram Chat ID',
                         placeholder='123456789',
-                        value=config_data['notifications']['telegram_chat_id']
+                        value=safe_get('notifications', 'telegram_chat_id', '')
                     ).classes('w-full')
                     telegram_chat_input.visible = telegram_enabled_checkbox.value
 
@@ -488,6 +504,8 @@ def create_settings(bot_service: BotService, state_manager: StateManager):
                     # Save button
                     async def save_notification_config():
                         try:
+                            if 'notifications' not in config_data: config_data['notifications'] = {}
+
                             # Update config data
                             config_data['notifications']['desktop_enabled'] = desktop_enabled_checkbox.value
                             config_data['notifications']['telegram_enabled'] = telegram_enabled_checkbox.value
