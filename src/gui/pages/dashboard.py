@@ -1,334 +1,138 @@
 """
-Dashboard Page - Main dashboard with metrics and charts
+Dashboard Page - Hybrid Apple/Matrix Style
+Full Screen Layout
 """
 
-import plotly.graph_objects as go
 from nicegui import ui
 from src.gui.services.bot_service import BotService
 from src.gui.services.state_manager import StateManager
 
-
 def create_dashboard(bot_service: BotService, state_manager: StateManager):
-    """Create dashboard page with real-time metrics, charts, and controls"""
+    """Create dashboard page with high-density grid and hybrid styling"""
+    
+    state = state_manager.get_state()
 
-    ui.label('Dashboard').classes('text-3xl font-bold mb-4 text-white')
+    # Container needs to be full height of parent
+    with ui.column().classes('w-full h-full gap-6'):  # Main column fills content area
 
-    # ===== METRICS CARDS (4 cards in grid) =====
-    with ui.grid(columns=4).classes('w-full gap-4 mb-6'):
-        # Card 1: Total Balance
-        with ui.card().classes('metric-card'):
-            balance_value = ui.label('$0.00').classes('text-4xl font-bold text-white')
-            ui.label('Total Balance').classes('text-sm text-gray-200 mt-2')
+        # --- HEADER & CONTROLS ---
+        with ui.row().classes('w-full items-center justify-between'):
+            with ui.column().classes('gap-0'):
+                ui.label('MISSION CONTROL').classes('text-2xl font-bold text-white font-mono tracking-tight')
+                ui.label(f'SYSTEM MONITORING // {len(state.last_reasoning)} ASSETS TRACKED').classes('text-[10px] text-[#00ff41] font-mono tracking-widest opacity-80')
+            
+            # Bot Toggle
+            async def toggle_bot():
+                if bot_service.is_running():
+                    await bot_service.stop()
+                else:
+                    await bot_service.start()
+                update_dashboard()
 
-        # Card 2: Total Return
-        with ui.card().classes('metric-card'):
-            return_value = ui.label('+0.00%').classes('text-4xl font-bold text-white')
-            ui.label('Total Return').classes('text-sm text-gray-200 mt-2')
+            btn_color = 'bg-[#1a0000] text-[#ff0000] border-[#ff0000]' if state.is_running else 'bg-[#001a00] text-[#00ff41] border-[#00ff41]'
+            btn_text = 'TERMINATE PROTOCOL' if state.is_running else 'INITIATE SEQUENCE'
+            
+            ui.button(btn_text, on_click=toggle_bot, icon='power_settings_new').classes(f'border {btn_color} px-6 py-2 font-mono text-xs font-bold rounded hover:opacity-80')
 
-        # Card 3: Sharpe Ratio
-        with ui.card().classes('metric-card'):
-            sharpe_value = ui.label('0.00').classes('text-4xl font-bold text-white')
-            ui.label('Sharpe Ratio').classes('text-sm text-gray-200 mt-2')
+        # --- METRICS ROW ---
+        with ui.grid(columns=4).classes('w-full gap-4'):
+            def stat_card(label, value, sub, icon, accent_class):
+                with ui.card().classes('bg-[#0a0a0a] border border-[#1a1a1a] p-4 flex flex-row items-center gap-4 rounded-lg hover:border-[#333] transition-colors shadow-none'):
+                    ui.icon(icon).classes(f'text-3xl {accent_class} opacity-80')
+                    with ui.column().classes('gap-0'):
+                        ui.label(label).classes('text-[10px] text-gray-500 font-mono uppercase tracking-widest')
+                        ui.label(value).classes('text-xl font-bold text-white font-mono')
+                        ui.label(sub).classes(f'text-[10px] {accent_class} font-mono')
 
-        # Card 4: Active Positions
-        with ui.card().classes('metric-card'):
-            positions_value = ui.label('0').classes('text-4xl font-bold text-white')
-            ui.label('Active Positions').classes('text-sm text-gray-200 mt-2')
+            pnl = state.total_value - state.start_balance
+            pnl_color = 'text-[#00ff41]' if pnl >= 0 else 'text-[#ff0000]'
+            
+            stat_card('NET EQUITY', f'${state.total_value:,.2f}', f'{pnl:+.2f} USD', 'account_balance', pnl_color)
+            stat_card('EXPOSURE', str(len(state.positions)), 'OPEN POSITIONS', 'layers', 'text-[#00ff41]')
+            stat_card('PERFORMANCE', f'{state.win_rate:.1f}%', f'{state.trades_count} EXEC', 'analytics', 'text-yellow-400')
+            stat_card('RISK FACTOR', f'{state.sharpe_ratio:.2f}', 'SHARPE RATIO', 'security', 'text-blue-400')
 
-    # ===== CHARTS ROW =====
-    with ui.row().classes('w-full gap-4 mb-6'):
-        # Equity Curve Chart (left half)
-        with ui.card().classes('flex-1 p-4'):
-            ui.label('Portfolio Value').classes('text-xl font-bold text-white mb-2')
+        # --- INTELLIGENCE PARAMETERS ---
+        from src.backend.agent.decision_maker import TradingAgent
+        with ui.expansion('INTELLIGENCE PARAMETERS // GANN-MATH-ENGINE', icon='psychology').classes('w-full border border-[#1a1a1a] bg-[#050505] text-[#00ff41] font-mono text-xs'):
+            with ui.row().classes('w-full p-4 gap-6'):
+                with ui.column().classes('flex-1 gap-2'):
+                    ui.label('PRIMARY DIRECTITVE (PROMPT IDENTITY):').classes('font-bold text-white opacity-80')
+                    ui.label(TradingAgent.AGENT_IDENTITY).classes('text-gray-400 italic border-l-2 border-[#00ff41] pl-2')
+                
+                with ui.column().classes('flex-1 gap-2'):
+                    ui.label('WD GANN STRICT RULES:').classes('font-bold text-white opacity-80')
+                    for rule in TradingAgent.GANN_RULES:
+                        ui.label(rule).classes('text-[#00ff41]')
 
-            equity_chart = ui.plotly(go.Figure(
-                data=[go.Scatter(
-                    x=[],
-                    y=[],
-                    mode='lines',
-                    name='Value',
-                    line=dict(color='#667eea', width=3)
-                )],
-                layout=go.Layout(
-                    template='plotly_dark',
-                    height=300,
-                    margin=dict(l=50, r=20, t=20, b=40),
-                    xaxis=dict(title='Time', showgrid=True, gridcolor='#374151'),
-                    yaxis=dict(title='Value ($)', showgrid=True, gridcolor='#374151'),
-                    paper_bgcolor='#1f2937',
-                    plot_bgcolor='#1f2937',
-                    font=dict(color='#e5e7eb')
-                )
-            )).classes('w-full')
+        # --- DATA GRID (FLEX GROW) ---
+        # This container expands to fill the rest of the 27" screen
+        with ui.column().classes('w-full flex-grow bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden relative flex flex-col'):
+            
+            # Grid Header
+            with ui.row().classes('w-full p-2 pl-4 border-b border-[#1a1a1a] items-center justify-between bg-[#050505] shrink-0'):
+                 with ui.row().classes('items-center gap-2'):
+                     ui.icon('table_chart', size='16px').classes('text-[#00ff41]')
+                     ui.label('MARKET_INTELLIGENCE_MATRIX').classes('text-xs font-mono font-bold text-[#00ff41]')
+                 
+                 ui.input(placeholder='SEARCH...').props('dense borderless dark').classes('font-mono text-xs bg-[#1a1a1a] px-2 rounded text-white')
 
-        # Asset Allocation Pie Chart (right half)
-        with ui.card().classes('flex-1 p-4'):
-            ui.label('Asset Allocation').classes('text-xl font-bold text-white mb-2')
+            # AgGrid - Height 100% of parent flex container
+            grid = ui.aggrid({
+                'columnDefs': [
+                    {'headerName': 'ASSET', 'field': 'asset', 'pinned': 'left', 'width': 80, 'cellClass': 'font-bold'},
+                    {'headerName': 'PRICE', 'field': 'price', 'width': 90},
+                    {'headerName': 'SIGNAL', 'field': 'signal', 'width': 80, 'cellStyle': {'fontWeight': 'bold'}},
+                    {'headerName': 'CONF', 'field': 'confidence', 'width': 70},
+                    {'headerName': 'ENTRY PLAN', 'field': 'entry', 'width': 150, 'tooltipField': 'entry'},
+                    {'headerName': 'EXIT PLAN', 'field': 'exit', 'width': 150, 'tooltipField': 'exit'},
+                    {'headerName': 'GANN ANALYSIS (THOUGHTS)', 'field': 'gann', 'flex': 1, 'minWidth': 200, 'tooltipField': 'gann'},
+                    {'headerName': '50% LEVEL', 'field': 'level_50', 'width': 90},
+                    {'headerName': 'SQ9 RES', 'field': 'sq9_res', 'width': 90},
+                    {'headerName': 'SQ9 SUP', 'field': 'sq9_sup', 'width': 90},
+                    {'headerName': 'TREND', 'field': 'trend', 'width': 90},
+                ],
+                'defaultColDef': {
+                    'sortable': True,
+                    'filter': True,
+                    'resizable': True,
+                    'cellClass': 'font-mono text-xs flex items-center',
+                    'headerClass': 'font-mono text-xs font-bold text-[#00ff41] bg-[#000]'
+                },
+                'rowHeight': 40,
+                'headerHeight': 35,
+                'theme': 'ag-theme-balham-dark',
+                'enableCellTextSelection': True
+            }).classes('w-full h-full border-none')  # h-full is critical here
 
-            allocation_chart = ui.plotly(go.Figure(
-                data=[go.Pie(
-                    labels=[],
-                    values=[],
-                    hole=0.4,
-                    marker=dict(colors=['#667eea', '#764ba2', '#f093fb', '#4facfe'])
-                )],
-                layout=go.Layout(
-                    template='plotly_dark',
-                    height=300,
-                    margin=dict(l=20, r=20, t=20, b=20),
-                    paper_bgcolor='#1f2937',
-                    plot_bgcolor='#1f2937',
-                    font=dict(color='#e5e7eb'),
-                    showlegend=True,
-                    legend=dict(orientation='v', x=1, y=0.5)
-                )
-            )).classes('w-full')
-
-    # ===== MARKET DATA =====
-    with ui.card().classes('w-full p-4 mb-6'):
-        ui.label('Market Data').classes('text-xl font-bold text-white mb-2')
-        market_data_container = ui.column().classes('w-full gap-4')
-        
-        with market_data_container:
-            ui.label('No market data available').classes('text-gray-400 text-center py-4')
-
-    # ===== ACTIVITY FEED =====
-    with ui.card().classes('w-full p-4 mb-6'):
-        ui.label('Recent Activity').classes('text-xl font-bold text-white mb-2')
-
-        activity_log = ui.log(max_lines=10).classes('w-full h-48 bg-gray-900 text-gray-300 p-4 rounded')
-        activity_log.push('Bot initialized. Waiting to start...')
-
-    # ===== CONTROL PANEL =====
-    with ui.card().classes('w-full p-4'):
-        ui.label('Bot Controls').classes('text-xl font-bold text-white mb-4')
-
-        with ui.row().classes('gap-4 items-center'):
-            # Refresh Data Button (for manual mode)
-            refresh_data_btn = ui.button('🔄 Refresh Data', on_click=lambda: refresh_market_data())
-            refresh_data_btn.classes('bg-blue-600 hover:bg-blue-700 text-white px-6 py-3')
-            refresh_data_loading = ui.label('').classes('text-sm text-blue-400 ml-2')
-
-            # Start Button
-            start_btn = ui.button('▶ Start Bot', on_click=lambda: start_bot())
-            start_btn.classes('bg-green-600 hover:bg-green-700 text-white px-6 py-3')
-
-            # Stop Button
-            stop_btn = ui.button('⏹ Stop Bot', on_click=lambda: stop_bot())
-            stop_btn.classes('bg-red-600 hover:bg-red-700 text-white px-6 py-3')
-            stop_btn.props('disable')  # Initially disabled
-
-            # Status indicator
-            status_indicator = ui.label('⚫ Stopped').classes('text-lg font-bold ml-4')
-
-        # Last refresh timestamp
-        with ui.row().classes('gap-4 items-center mt-4'):
-            last_refresh_label = ui.label('Last refreshed: Never').classes('text-sm text-gray-400')
-            refresh_timer_label = ui.label('').classes('text-xs text-gray-500')
-
-    # ===== CONTROL FUNCTIONS =====
-
-    async def start_bot():
-        """Start the trading bot"""
-        try:
-            status_indicator.text = '🟡 Starting...'
-            activity_log.push('Starting bot...')
-
-            await bot_service.start()
-
-            status_indicator.text = '🟢 Running'
-            status_indicator.classes(remove='text-gray-400', add='text-green-500')
-            start_btn.props('disable')
-            stop_btn.props(remove='disable')
-
-            activity_log.push('✅ Bot started successfully!')
-            ui.notify('Bot started!', type='positive')
-
-        except Exception as e:
-            status_indicator.text = '🔴 Error'
-            status_indicator.classes(add='text-red-500')
-            activity_log.push(f'❌ Error starting bot: {str(e)}')
-            ui.notify(f'Failed to start: {str(e)}', type='negative')
-
-    async def stop_bot():
-        """Stop the trading bot"""
-        try:
-            status_indicator.text = '🟡 Stopping...'
-            activity_log.push('Stopping bot...')
-
-            await bot_service.stop()
-
-            status_indicator.text = '⚫ Stopped'
-            status_indicator.classes(remove='text-green-500', add='text-gray-400')
-            start_btn.props(remove='disable')
-            stop_btn.props('disable')
-
-            activity_log.push('✅ Bot stopped successfully!')
-            ui.notify('Bot stopped!', type='info')
-
-        except Exception as e:
-            activity_log.push(f'❌ Error stopping bot: {str(e)}')
-            ui.notify(f'Failed to stop: {str(e)}', type='negative')
-
-    # ===== AUTO-REFRESH FUNCTIONS =====
-
-    import time
-    import asyncio
-    last_refresh_time = None
-    refresh_seconds_ago = 0
-
-    async def refresh_market_data():
-        """Refresh market data from Hyperliquid without starting bot"""
-        nonlocal last_refresh_time, refresh_seconds_ago
-
-        try:
-            refresh_data_btn.enabled = False
-            refresh_data_loading.text = '⏳ Fetching...'
-            activity_log.push('📊 Refreshing market data...')
-
-            # Call bot service to refresh data
-            success = await bot_service.refresh_market_data()
-
-            if success:
-                last_refresh_time = time.time()
-                refresh_data_loading.text = '✅ Done'
-                activity_log.push('✅ Market data refreshed successfully!')
-                ui.notify('Market data refreshed!', type='positive')
-
-                # Update dashboard immediately after refresh
-                await update_dashboard()
-            else:
-                refresh_data_loading.text = '❌ Failed'
-                activity_log.push('❌ Failed to refresh market data')
-                ui.notify('Failed to refresh market data', type='negative')
-
-        except Exception as e:
-            activity_log.push(f'❌ Refresh error: {str(e)}')
-            ui.notify(f'Error: {str(e)}', type='negative')
-            refresh_data_loading.text = '❌ Error'
-        finally:
-            refresh_data_btn.enabled = True
-            # Clear loading message after 2 seconds
-            await asyncio.sleep(2.0)
-            refresh_data_loading.text = ''
-
+    # --- REFRESH ---
     async def update_dashboard():
-        """Update all dashboard components with latest data"""
-        nonlocal refresh_seconds_ago
-
         try:
             state = state_manager.get_state()
-
-            # Update metrics cards
-            balance_value.text = f'${state.balance:,.2f}'
-
-            # Return with color coding
-            return_pct = state.total_return_pct
-            return_value.text = f'{return_pct:+.2f}%'
-            if return_pct >= 0:
-                return_value.classes(remove='text-red-500', add='text-green-500')
-            else:
-                return_value.classes(remove='text-green-500', add='text-red-500')
-
-            sharpe_value.text = f'{state.sharpe_ratio:.2f}'
-            positions_value.text = str(len(state.positions or []))
-
-            # Update equity curve chart
-            equity_history = bot_service.get_equity_history()
-            if equity_history:
-                times = [d['time'] for d in equity_history]
-                values = [d['value'] for d in equity_history]
-
-                equity_chart.figure.data[0].x = times
-                equity_chart.figure.data[0].y = values
-                equity_chart.update()
-
-            # Update asset allocation chart
-            positions = state.positions or []
-            if positions:
-                labels = [p['symbol'] for p in positions]
-                values = [abs(p['quantity'] * p['entry_price']) for p in positions]
-
-                allocation_chart.figure.data[0].labels = labels
-                allocation_chart.figure.data[0].values = values
-                allocation_chart.update()
-
-            # Update market data
-            market_data = getattr(state, 'market_data', None)
-            market_data_container.clear()
+            last_reasoning = getattr(state, 'last_reasoning', {})
             
-            if market_data and isinstance(market_data, list) and len(market_data) > 0:
-                with market_data_container:
-                    with ui.grid(columns=len(market_data)).classes('w-full gap-4'):
-                        for asset_data in market_data:
-                            asset = asset_data.get('asset', 'N/A')
-                            price = asset_data.get('current_price', 0)
-                            
-                            # Intraday data
-                            intraday = asset_data.get('intraday', {})
-                            ema20 = intraday.get('ema20', 0)
-                            rsi14 = intraday.get('rsi14', 0)
-                            
-                            # Long-term data
-                            lt = asset_data.get('long_term', {})
-                            lt_ema20 = lt.get('ema20', 0)
-                            lt_ema50 = lt.get('ema50', 0)
-                            
-                            with ui.card().classes('p-4 bg-gradient-to-br from-gray-700 to-gray-800'):
-                                ui.label(asset).classes('text-2xl font-bold text-white mb-2')
-                                ui.label(f'${price:,.2f}').classes('text-xl text-green-400 mb-3')
-                                
-                                with ui.column().classes('gap-1 text-sm'):
-                                    ui.label(f'EMA20 (5m): {ema20:.2f}' if ema20 else 'EMA20: N/A').classes('text-gray-300')
-                                    ui.label(f'RSI14 (5m): {rsi14:.2f}' if rsi14 else 'RSI14: N/A').classes('text-gray-300')
-                                    ui.separator()
-                                    ui.label(f'EMA20 (4h): {lt_ema20:.2f}' if lt_ema20 else 'EMA20 (4h): N/A').classes('text-gray-400')
-                                    ui.label(f'EMA50 (4h): {lt_ema50:.2f}' if lt_ema50 else 'EMA50 (4h): N/A').classes('text-gray-400')
-            else:
-                with market_data_container:
-                    ui.label('No market data available').classes('text-gray-400 text-center py-4')
+            rows = []
+            if last_reasoning:
+                for asset, data in last_reasoning.items():
+                    if not isinstance(data, dict): continue
+                    
+                    rows.append({
+                        'asset': asset,
+                        'price': f"${data.get('analyzed_price', 0):,.2f}",
+                        'signal': data.get('action', 'HOLD').upper(),
+                        'confidence': f"{data.get('confidence', 0)*100:.0f}%",
+                        'entry': data.get('entry_plan', '-'),
+                        'exit': data.get('exit_plan', '-'),
+                        'gann': data.get('gann_thoughts', '-'),
+                        'level_50': f"${data.get('level_50_percent', 0):,.2f}",
+                        'sq9_res': f"${data.get('sq9_next_resistance', 0):,.2f}",
+                        'sq9_sup': f"${data.get('sq9_next_support', 0):,.2f}",
+                        'trend': data.get('trend_50_rule', '-')
+                    })
+            
+            if rows:
+                grid.options['rowData'] = rows
+                grid.update()
+        except: pass
 
-            # Update activity log with recent events
-            recent_events = bot_service.get_recent_events(limit=5)
-            for event in recent_events[-5:]:  # Last 5 only
-                activity_log.push(f"[{event['time']}] {event['message']}")
-
-            # Update button states based on bot status
-            if state.is_running:
-                status_indicator.text = '🟢 Running'
-                status_indicator.classes(remove='text-gray-400', add='text-green-500')
-                start_btn.props('disable')
-                stop_btn.props(remove='disable')
-            else:
-                status_indicator.text = '⚫ Stopped'
-                status_indicator.classes(remove='text-green-500', add='text-gray-400')
-                start_btn.props(remove='disable')
-                stop_btn.props('disable')
-
-            if state.error:
-                status_indicator.text = '🔴 Error'
-                status_indicator.classes(add='text-red-500')
-                activity_log.push(f'Error: {state.error}')
-
-            # Update refresh timestamp
-            if last_refresh_time:
-                refresh_seconds_ago = int(time.time() - last_refresh_time)
-                if refresh_seconds_ago < 60:
-                    last_refresh_label.text = f'Last refreshed: {refresh_seconds_ago} seconds ago'
-                else:
-                    minutes = refresh_seconds_ago // 60
-                    last_refresh_label.text = f'Last refreshed: {minutes} minutes ago'
-                refresh_timer_label.text = '(auto-updating)'
-            else:
-                last_refresh_label.text = 'Last refreshed: Never'
-                refresh_timer_label.text = '(click Refresh Data to fetch data)'
-
-        except Exception as e:
-            activity_log.push(f'Dashboard update error: {str(e)}')
-
-    # ===== AUTO-REFRESH TIMER =====
-    # Update dashboard every 3 seconds
-    ui.timer(3.0, update_dashboard)
-
-    # Initial update (call immediately, but don't await in sync context)
-    # The timer will handle subsequent updates
+    ui.timer(2.0, update_dashboard)

@@ -1,328 +1,173 @@
 """
-Market Data Page - Live market data and technical indicators
+Market Data Page - Live W.D. Gann Scanner
 """
 
-import plotly.graph_objects as go
+from datetime import datetime
 from nicegui import ui
 from src.gui.services.bot_service import BotService
 from src.gui.services.state_manager import StateManager
 
-
 def create_market(bot_service: BotService, state_manager: StateManager):
-    """Create market data page with live prices and technical indicators"""
+    """Create market data page with W.D. Gann Scanner (Finviz Style)"""
 
-    ui.label('Market Data').classes('text-3xl font-bold mb-4 text-white')
+    ui.label('GANN GEOMETRIC SCANNER').classes('text-2xl font-bold mb-4 text-emerald-400 tracking-widest')
 
-    # ===== ASSET SELECTOR =====
-    with ui.row().classes('w-full items-center gap-4 mb-6'):
-        ui.label('Select Asset:').classes('text-lg font-semibold text-white')
+    # Container for the scanner
+    scanner_container = ui.column().classes('w-full')
 
-        # Get assets from bot config
-        state = state_manager.get_state()
-        configured_assets = bot_service.get_assets() if bot_service.is_running() else ['BTC', 'ETH', 'SOL']
-        available_assets = configured_assets if configured_assets else ['BTC', 'ETH', 'SOL']
+    # Define columns for the scanner table
+    columns = [
+        {'name': 'asset', 'label': 'ASSET', 'field': 'asset', 'sortable': True, 'align': 'left'},
+        {'name': 'price', 'label': 'PRICE @ TIME', 'field': 'price', 'sortable': True, 'align': 'right'},
+        {'name': 'trend', 'label': 'TREND (50%)', 'field': 'trend', 'sortable': True, 'align': 'center'},
+        {'name': 'range_pos', 'label': 'POS %', 'field': 'range_pos', 'sortable': True, 'align': 'right'},
+        {'name': 'sq9_res', 'label': 'SQ9 RES (+360°)', 'field': 'sq9_res', 'sortable': True, 'align': 'right'},
+        {'name': 'sq9_sup', 'label': 'SQ9 SUP (-360°)', 'field': 'sq9_sup', 'sortable': True, 'align': 'right'},
+        {'name': 'action', 'label': 'AI ACTION', 'field': 'action', 'sortable': True, 'align': 'center'},
+        {'name': 'rationale', 'label': 'KEY OBSERVATION', 'field': 'rationale', 'align': 'left', 'classes': 'text-xs font-mono'},
+    ]
 
-        asset_select = ui.select(
-            label='Asset',
-            options=available_assets,
-            value=available_assets[0] if available_assets else 'BTC'
-        ).classes('w-48')
+    # Create the table
+    # Customizing rows via slots/cell-class logic is limited in standard table, 
+    # but we can use HTML formatting in values or cell slots. 
+    # For "Matrix" feel, we style the table itself.
+    market_table = ui.table(
+        columns=columns, 
+        rows=[], 
+        row_key='asset',
+        pagination=10
+    ).classes('w-full text-gray-300 bg-slate-900 border border-emerald-500/30 font-mono')
+    
+    # Custom styling for table headers and slots
+    market_table.add_slot('header', r'''
+        <q-tr :props="props">
+            <q-th v-for="col in props.cols" :key="col.name" :props="props" class="text-emerald-500 font-bold uppercase">
+                {{ col.label }}
+            </q-th>
+        </q-tr>
+    ''') 
 
-        interval_select = ui.select(
-            label='Interval',
-            options=['1m', '5m', '15m', '1h', '4h', '1d'],
-            value='5m'
-        ).classes('w-32')
+    # Custom styling for body rows (conditional formatting)
+    market_table.add_slot('body', r'''
+        <q-tr :props="props">
+            <q-td key="asset" :props="props" class="font-bold text-white">
+                {{ props.row.asset }}
+            </q-td>
+            <q-td key="price" :props="props">
+                <div class="row items-center justify-end">
+                    <span class="text-lg font-bold">{{ props.row.price_str }}</span>
+                    <span class="text-xs text-gray-500 ml-2">{{ props.row.time_str }}</span>
+                </div>
+            </q-td>
+            <q-td key="trend" :props="props">
+                <div :class="props.row.trend === 'BULLISH' ? 'text-green-400 font-bold' : (props.row.trend === 'BEARISH' ? 'text-red-400 font-bold' : 'text-gray-500')">
+                    {{ props.row.trend }}
+                </div>
+            </q-td>
+            <q-td key="range_pos" :props="props" class="text-amber-400">
+                {{ props.row.range_pos }}
+            </q-td>
+            <q-td key="sq9_res" :props="props" class="text-green-300/80">
+                {{ props.row.sq9_res }}
+            </q-td>
+             <q-td key="sq9_sup" :props="props" class="text-red-300/80">
+                {{ props.row.sq9_sup }}
+            </q-td>
+            <q-td key="action" :props="props">
+                <div class="px-2 py-1 rounded text-center text-xs font-bold"
+                     :class="props.row.action === 'BUY' ? 'bg-green-600 text-white' : (props.row.action === 'SELL' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300')">
+                    {{ props.row.action }}
+                </div>
+            </q-td>
+            <q-td key="rationale" :props="props" class="whitespace-normal max-w-xs text-xs text-gray-400">
+                {{ props.row.rationale }}
+            </q-td>
+        </q-tr>
+    ''')
 
-    # ===== PRICE CARDS =====
-    with ui.grid(columns=4).classes('w-full gap-4 mb-6'):
-        # Current Price Card
-        with ui.card().classes('metric-card'):
-            current_price_label = ui.label('$0.00').classes('text-4xl font-bold text-white')
-            ui.label('Current Price').classes('text-sm text-gray-200 mt-2')
-
-        # 24h Change Card
-        with ui.card().classes('metric-card'):
-            change_24h_label = ui.label('+0.00%').classes('text-4xl font-bold text-green-400')
-            ui.label('24h Change').classes('text-sm text-gray-200 mt-2')
-
-        # 24h Volume Card
-        with ui.card().classes('metric-card'):
-            volume_24h_label = ui.label('$0.00M').classes('text-4xl font-bold text-white')
-            ui.label('24h Volume').classes('text-sm text-gray-200 mt-2')
-
-        # Open Interest Card
-        with ui.card().classes('metric-card'):
-            open_interest_label = ui.label('$0.00M').classes('text-4xl font-bold text-white')
-            ui.label('Open Interest').classes('text-sm text-gray-200 mt-2')
-
-    # ===== PRICE CHART =====
-    with ui.card().classes('w-full p-4 mb-6'):
-        ui.label('Price Chart').classes('text-xl font-bold text-white mb-2')
-
-        # Candlestick chart
-        price_chart = ui.plotly(go.Figure(
-            data=[go.Candlestick(
-                x=[],
-                open=[],
-                high=[],
-                low=[],
-                close=[],
-                name='Price'
-            )],
-            layout=go.Layout(
-                template='plotly_dark',
-                height=400,
-                margin=dict(l=50, r=20, t=20, b=40),
-                xaxis=dict(title='Time', showgrid=True, gridcolor='#374151'),
-                yaxis=dict(title='Price ($)', showgrid=True, gridcolor='#374151'),
-                paper_bgcolor='#1f2937',
-                plot_bgcolor='#1f2937',
-                font=dict(color='#e5e7eb'),
-                showlegend=True
-            )
-        )).classes('w-full')
-
-    # ===== TECHNICAL INDICATORS =====
-    with ui.row().classes('w-full gap-4 mb-6'):
-        # Left column - Trend Indicators
-        with ui.card().classes('flex-1 p-4'):
-            ui.label('Trend Indicators').classes('text-xl font-bold text-white mb-4')
-
-            with ui.column().classes('gap-3 w-full'):
-                # EMA 20/50
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('EMA 20').classes('text-gray-300')
-                    ema20_label = ui.label('$0.00').classes('text-white font-semibold')
-
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('EMA 50').classes('text-gray-300')
-                    ema50_label = ui.label('$0.00').classes('text-white font-semibold')
-
-                ui.separator()
-
-                # MACD
-                ui.label('MACD').classes('text-lg font-bold text-white mt-2')
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('MACD Line').classes('text-gray-300')
-                    macd_line_label = ui.label('0.00').classes('text-white font-semibold')
-
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('Signal Line').classes('text-gray-300')
-                    macd_signal_label = ui.label('0.00').classes('text-white font-semibold')
-
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('Histogram').classes('text-gray-300')
-                    macd_hist_label = ui.label('0.00').classes('text-green-400 font-semibold')
-
-        # Right column - Momentum Indicators
-        with ui.card().classes('flex-1 p-4'):
-            ui.label('Momentum Indicators').classes('text-xl font-bold text-white mb-4')
-
-            with ui.column().classes('gap-3 w-full'):
-                # RSI
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('RSI (14)').classes('text-gray-300')
-                    rsi_label = ui.label('50.00').classes('text-white font-semibold')
-
-                # RSI Bar
-                rsi_progress = ui.linear_progress(value=0.5, show_value=False).classes('w-full')
-
-                ui.separator()
-
-                # ATR
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('ATR (14)').classes('text-gray-300')
-                    atr_label = ui.label('$0.00').classes('text-white font-semibold')
-
-                ui.separator()
-
-                # Stochastic
-                ui.label('Stochastic').classes('text-lg font-bold text-white mt-2')
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('%K').classes('text-gray-300')
-                    stoch_k_label = ui.label('50.00').classes('text-white font-semibold')
-
-                with ui.row().classes('w-full justify-between items-center'):
-                    ui.label('%D').classes('text-gray-300')
-                    stoch_d_label = ui.label('50.00').classes('text-white font-semibold')
-
-    # ===== INDICATOR CHART =====
-    with ui.card().classes('w-full p-4 mb-6'):
-        ui.label('RSI & MACD').classes('text-xl font-bold text-white mb-2')
-
-        # Create subplot for RSI and MACD
-        indicator_chart = ui.plotly(go.Figure(
-            data=[
-                go.Scatter(x=[], y=[], mode='lines', name='RSI', line=dict(color='#f59e0b', width=2)),
-                go.Scatter(x=[], y=[], mode='lines', name='MACD', line=dict(color='#3b82f6', width=2), yaxis='y2'),
-            ],
-            layout=go.Layout(
-                template='plotly_dark',
-                height=300,
-                margin=dict(l=50, r=50, t=20, b=40),
-                xaxis=dict(title='Time', showgrid=True, gridcolor='#374151'),
-                yaxis=dict(title='RSI', showgrid=True, gridcolor='#374151', range=[0, 100]),
-                yaxis2=dict(title='MACD', overlaying='y', side='right', showgrid=False),
-                paper_bgcolor='#1f2937',
-                plot_bgcolor='#1f2937',
-                font=dict(color='#e5e7eb'),
-                showlegend=True
-            )
-        )).classes('w-full')
-
-    # ===== MARKET SENTIMENT =====
-    with ui.card().classes('w-full p-4'):
-        ui.label('Market Sentiment').classes('text-xl font-bold text-white mb-4')
-
-        with ui.row().classes('w-full gap-6 items-center'):
-            # Sentiment gauge
-            with ui.column().classes('flex-1'):
-                sentiment_label = ui.label('NEUTRAL').classes('text-3xl font-bold text-gray-400')
-                sentiment_desc = ui.label('Waiting for clear signals').classes('text-sm text-gray-400 mt-2')
-
-            # Signal indicators
-            with ui.column().classes('flex-1'):
-                with ui.row().classes('items-center gap-2 mb-2'):
-                    trend_icon = ui.label('○').classes('text-2xl text-gray-400')
-                    ui.label('Trend Signal').classes('text-gray-300')
-
-                with ui.row().classes('items-center gap-2 mb-2'):
-                    momentum_icon = ui.label('○').classes('text-2xl text-gray-400')
-                    ui.label('Momentum Signal').classes('text-gray-300')
-
-                with ui.row().classes('items-center gap-2'):
-                    volume_icon = ui.label('○').classes('text-2xl text-gray-400')
-                    ui.label('Volume Signal').classes('text-gray-300')
 
     # ===== AUTO-REFRESH LOGIC =====
-    async def update_market_data():
-        """Update market data and indicators from real bot data"""
+    async def update_scanner():
+        """Update scanner table with data for ALL configured assets"""
         state = state_manager.get_state()
-        selected_asset = asset_select.value
-
-        # Get market data for selected asset from bot state
-        market_data = None
-        if state.market_data:
-            # market_data can be either dict with asset keys or list of dicts
-            if isinstance(state.market_data, dict):
-                market_data = state.market_data.get(selected_asset)
-            elif isinstance(state.market_data, list):
-                market_data = next((m for m in state.market_data if m.get('asset') == selected_asset), None)
-
-        if not market_data:
-            # No data available yet
-            current_price_label.set_text('Loading...')
-            change_24h_label.set_text('--')
-            volume_24h_label.set_text('--')
-            open_interest_label.set_text('--')
-            return
-
-        # Update price cards with real data
-        current_price = market_data.get('price') or market_data.get('current_price', 0)
-        current_price_label.set_text(f'${current_price:,.2f}')
         
-        # 24h change (mock for now - need to calculate from price history)
-        change_24h_label.set_text('+0.00%')
-        change_24h_label.classes('text-4xl font-bold text-gray-400')
+        # Get list of assets to scan
+        configured_assets = bot_service.get_assets() if bot_service.is_running() else ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE']
         
-        # Volume and OI
-        open_interest = market_data.get('open_interest', 0)
-        if open_interest:
-            open_interest_label.set_text(f'${open_interest/1e6:.1f}M')
-        else:
-            open_interest_label.set_text('--')
+        # We also want to capture assets that might be in reasoning but not in config (historical)
+        if hasattr(state, 'last_reasoning') and isinstance(state.last_reasoning, dict):
+            reasoning_assets = list(state.last_reasoning.keys())
+            configured_assets = list(set(configured_assets + reasoning_assets))
         
-        volume_24h_label.set_text('--')  # Not available in current data
+        rows = []
         
-        # Update indicators - use 5m data from market_data
-        intraday = market_data.get('intraday', {})
-        long_term = market_data.get('long_term', {})
-        
-        # EMA values
-        ema20_5m = intraday.get('ema20')
-        ema20_lt = long_term.get('ema20')
-        
-        if ema20_5m:
-            ema20_label.set_text(f'${ema20_5m:,.2f}')
-        else:
-            ema20_label.set_text('--')
-        
-        ema50_val = long_term.get('ema50')
-        if ema50_val:
-            ema50_label.set_text(f'${ema50_val:,.2f}')
-        else:
-            ema50_label.set_text('--')
-        
-        # MACD
-        macd_val = intraday.get('macd')
-        if macd_val:
-            macd_line_label.set_text(f'{macd_val:.2f}')
-        else:
-            macd_line_label.set_text('--')
-        
-        macd_signal_label.set_text('--')  # Not separate in current data
-        macd_hist_label.set_text('--')
-        
-        # RSI
-        rsi_value = intraday.get('rsi14')
-        if rsi_value:
-            rsi_label.set_text(f'{rsi_value:.2f}')
-            rsi_progress.set_value(rsi_value / 100)
+        for asset in sorted(configured_assets):
+            reasoning = {}
+            if hasattr(state, 'last_reasoning') and isinstance(state.last_reasoning, dict):
+                reasoning = state.last_reasoning.get(asset, {})
             
-            if rsi_value > 70:
-                rsi_label.classes('text-red-400 font-semibold')
-            elif rsi_value < 30:
-                rsi_label.classes('text-green-400 font-semibold')
+            # Base data
+            price = 0
+            time_str = datetime.now().strftime("%H:%M") # Default to now if no timestamp
+                
+            if reasoning:
+                price = reasoning.get('analyzed_price', 0)
+                # Check for timestamp in reasoning or use current
+                # (TODO: Add 'analyzed_at' to backend if needed, for now use current if fresh)
             else:
-                rsi_label.classes('text-white font-semibold')
-        else:
-            rsi_label.set_text('--')
-            rsi_progress.set_value(0.5)
-        
-        # ATR
-        atr_val = long_term.get('atr14')
-        if atr_val:
-            atr_label.set_text(f'${atr_val:.2f}')
-        else:
-            atr_label.set_text('--')
-        
-        stoch_k_label.set_text('--')  # Not available
-        stoch_d_label.set_text('--')
-        
-        # Update sentiment based on indicators
-        if rsi_value and ema20_5m and current_price:
-            if rsi_value > 60 and current_price > ema20_5m:
-                sentiment_label.set_text('BULLISH')
-                sentiment_label.classes('text-3xl font-bold text-green-400')
-                sentiment_desc.set_text('Price above EMA20, RSI showing strength')
-                trend_icon.set_text('●')
-                trend_icon.classes('text-2xl text-green-400')
-            elif rsi_value < 40 and current_price < ema20_5m:
-                sentiment_label.set_text('BEARISH')
-                sentiment_label.classes('text-3xl font-bold text-red-400')
-                sentiment_desc.set_text('Price below EMA20, RSI showing weakness')
-                trend_icon.set_text('●')
-                trend_icon.classes('text-2xl text-red-400')
+                # Fallback to market_data
+                 if state.market_data and isinstance(state.market_data, dict):
+                     asset_data = state.market_data.get(asset, {})
+                     price = asset_data.get('price', 0)
+
+            # --- Formatting Logic ---
+            
+            # Trend
+            trend = reasoning.get('trend_50_rule', 'WAITING')
+            
+            # Range Pos
+            range_pos_str = '--'
+            range_price = reasoning.get('range_price', 0)
+            major_low = reasoning.get('major_low', 0)
+            major_high = reasoning.get('major_high', 0)
+            
+            if range_price > 0 and major_high > major_low and price > 0:
+                pos_pct = ((price - major_low) / range_price) * 100
+                range_pos_str = f"{pos_pct:.1f}%"
+            
+            # Geometry
+            sq9_res = f"${reasoning.get('sq9_next_resistance', 0):,.2f}"
+            sq9_sup = f"${reasoning.get('sq9_next_support', 0):,.2f}"
+            
+            # AI
+            action = reasoning.get('action', 'HOLD').upper()
+            rationale = reasoning.get('rationale', 'Initializing...')
+            
+            # Fix empty values
+            if price == 0:
+                price_str = "$0.00"
+                trend = "OFFLINE"
             else:
-                sentiment_label.set_text('NEUTRAL')
-                sentiment_label.classes('text-3xl font-bold text-gray-400')
-                sentiment_desc.set_text('Mixed signals, waiting for clear direction')
-                trend_icon.set_text('○')
-                trend_icon.classes('text-2xl text-gray-400')
-        else:
-            sentiment_label.set_text('NO DATA')
-            sentiment_label.classes('text-3xl font-bold text-gray-500')
-            sentiment_desc.set_text('Waiting for market data from bot...')
-        
-        momentum_icon.set_text('○')
-        momentum_icon.classes('text-2xl text-gray-400')
-        volume_icon.set_text('○')
-        volume_icon.classes('text-2xl text-gray-400')
+                price_str = f"${price:,.2f}"
 
-    # Auto-refresh every 5 seconds
-    ui.timer(5.0, update_market_data)
+            # Append Row
+            rows.append({
+                'asset': asset,
+                'price': price, # For sorting
+                'price_str': price_str,
+                'time_str': time_str,
+                'trend': trend,
+                'range_pos': range_pos_str,
+                'sq9_res': sq9_res,
+                'sq9_sup': sq9_sup,
+                'action': action,
+                'rationale': rationale
+            })
+            
+        market_table.rows = rows
+        market_table.update()
 
-    # Refresh on asset/interval change
-    asset_select.on('update:model-value', lambda: update_market_data())
-    interval_select.on('update:model-value', lambda: update_market_data())
+    # Update immediately and then timer
+    # Update immediately via one-shot timer to avoid RuntimeWarning
+    ui.timer(0.1, update_scanner, once=True)
+    ui.timer(5.0, update_scanner) # 5s refresh for scanner

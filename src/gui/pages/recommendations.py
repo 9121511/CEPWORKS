@@ -65,24 +65,41 @@ def create_recommendations(bot_service: BotService, state_manager: StateManager)
             for proposal in proposals:
                 create_proposal_card(proposal)
     
-    def create_proposal_card(proposal: dict):
+    def create_proposal_card(proposal):
         """Create a card for a single proposal"""
-        asset = proposal.get('asset', 'N/A')
-        action = proposal.get('action', 'hold')
-        confidence = proposal.get('confidence', 0)
-        entry_price = proposal.get('entry_price', 0)
-        tp_price = proposal.get('tp_price')
-        sl_price = proposal.get('sl_price')
-        size = proposal.get('size', 0)
-        allocation = proposal.get('allocation', 0)
-        rationale = proposal.get('rationale', '')
-        risk_reward = proposal.get('risk_reward')
-        proposal_id = proposal.get('id', '')
-        timestamp = proposal.get('timestamp', '')
-        
-        # Calculate potential gain/loss percentages
-        potential_gain = proposal.get('potential_gain')
-        potential_loss = proposal.get('potential_loss')
+        # Handle both dict and dataclass (TradeProposal)
+        if hasattr(proposal, 'asset'):
+            # It's a TradeProposal dataclass
+            asset = proposal.asset
+            action = proposal.action
+            confidence = proposal.confidence * 100 if proposal.confidence <= 1 else proposal.confidence
+            entry_price = proposal.entry_price
+            tp_price = proposal.tp_price if hasattr(proposal, 'tp_price') and proposal.tp_price > 0 else None
+            sl_price = proposal.sl_price if hasattr(proposal, 'sl_price') and proposal.sl_price > 0 else None
+            size = proposal.amount
+            allocation = proposal.entry_price * proposal.amount if proposal.entry_price and proposal.amount else 0
+            rationale = proposal.rationale
+            risk_reward = proposal.risk_reward_ratio if hasattr(proposal, 'risk_reward_ratio') and proposal.risk_reward_ratio > 0 else None
+            proposal_id = proposal.id
+            timestamp = proposal.created_at.isoformat() if hasattr(proposal, 'created_at') and proposal.created_at else ''
+            potential_gain = None
+            potential_loss = None
+        else:
+            # It's a dict (backward compatibility)
+            asset = proposal.get('asset', 'N/A')
+            action = proposal.get('action', 'hold')
+            confidence = proposal.get('confidence', 0)
+            entry_price = proposal.get('entry_price', 0)
+            tp_price = proposal.get('tp_price')
+            sl_price = proposal.get('sl_price')
+            size = proposal.get('size', proposal.get('amount', 0))
+            allocation = proposal.get('allocation', 0)
+            rationale = proposal.get('rationale', '')
+            risk_reward = proposal.get('risk_reward', proposal.get('risk_reward_ratio'))
+            proposal_id = proposal.get('id', '')
+            timestamp = proposal.get('timestamp', '')
+            potential_gain = proposal.get('potential_gain')
+            potential_loss = proposal.get('potential_loss')
         
         # Determine card color based on action
         if action == 'buy':

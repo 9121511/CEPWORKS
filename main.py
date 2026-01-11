@@ -53,24 +53,19 @@ if __name__ in {"__main__", "__mp_main__"}:
     # Call create_app to register all pages
     create_app()
 
-    # Register shutdown handler with NiceGUI app
-    async def on_app_shutdown():
-        """Called when NiceGUI app is shutting down"""
-        print("[INFO] NiceGUI app shutdown event triggered")
-        cleanup()
+    # Auto-start bot on launch
+    app.on_startup(lambda: asyncio.create_task(bot_service.start()))
 
-    app.on_shutdown(on_app_shutdown)
-
-    # Run in native desktop mode
+    # Run in BROWSER mode (Native disabled)
     ui.run(
-        native=True,              # Desktop mode via pywebview
-        window_size=(1400, 900),  # Window dimensions
+        native=False,             # Browser mode
+        window_size=None,         # Not needed for browser
         fullscreen=False,
-        title="AI Trading Bot",
+        title="CASTILLO CAPITAL SYSTEMS",
         favicon="🤖",
         dark=True,                # Dark theme
         reload=False,             # Disable hot reload in production
-        show=True,                # Show window immediately
+        show=True,                # Open browser tab immediately
         port=8080,                # Default port
         binding_refresh_interval=0.1  # Faster UI updates
     )
